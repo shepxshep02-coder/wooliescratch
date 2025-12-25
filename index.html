@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scratch Card</title>
+<style>
+body { display:flex; justify-content:center; align-items:center; height:100vh; background:#f0f0f0; font-family:sans-serif; }
+#scratchCard { position:relative; width:300px; height:150px; background:gray; overflow:hidden; border-radius:10px; box-shadow:0 4px 10px rgba(0,0,0,0.2); }
+#prize { position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; font-size:24px; z-index:1; user-select:none; color:lightblue; text-align:center; padding:10px; }
+#overlay { position:absolute; top:0; left:0; width:100%; height:100%; cursor:pointer; z-index:2; touch-action:none; }
+</style>
+</head>
+<body>
+
+<div id="scratchCard">
+  <div id="prize">🎉 Scratch to reveal 🎉</div>
+  <canvas id="overlay"></canvas>
+</div>
+
+<script>
+// ----- Canvas setup -----
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+canvas.width = canvas.offsetWidth;
+canvas.height = canvas.offsetHeight;
+ctx.fillStyle = 'darkgray';
+ctx.fillRect(0,0,canvas.width,canvas.height);
+
+// ----- Utilities -----
+function getToken() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('token');
+}
+
+// Generate random token
+function generateToken(length=10){
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let token = '';
+  for(let i=0;i<length;i++){
+    token += chars.charAt(Math.floor(Math.random()*chars.length));
+  }
+  return token;
+}
+
+// Simple hash function to generate a numeric code from token
+function hashToken(token) {
+  let hash = 0;
+  for (let i=0;i<token.length;i++){
+    hash = (hash*31 + token.charCodeAt(i)) % 1000000; // 6-digit number for deterministic prize
+  }
+  return hash;
+}
+
+// Weighted prizes
+const prizes = [
+  { text:"Nothing", chance:4 },
+  { text:"$500,00", chance:3 },
+  { text:"$1.000,00", chance:2 },
+  { text:"$2.500,00", chance:1 }
+];
+
+// Pick deterministic prize
+function pickPrize(token){
+  const code = hashToken(token);
+  const totalChance = prizes.reduce((sum,p)=>sum+p.chance,0);
+  let cumulative=0;
+  for(let p of prizes){
+    cumulative+=p.chance;
+    if(code%totalChance < cumulative) return p.text;
+  }
+}
+
+// ----- Token verification & one-time use -----
+let token = getToken();
+const prizeDiv = document.getElementById('prize');
+if(!token){
+  // Generate a new token if none provided and reload URL
+  token = generateToken(10);
+  window.location.href = window.location.pathname + "?token=" + token;
+}else{
+  // Check if already played in this browser
+  if(localStorage.getItem("played_"+token)){
+    prizeDiv.textContent = "Already played! ❌";
+  }else{
+    localStorage.setItem("played_"+token,"1");
+    const prize = pickPrize(token);
+    prizeDiv.textContent = prize;
+  }
+}
+
+// ----- Scratch functionality -----
+let isDrawing=false;
+function getPointerPos(e){
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX!==undefined?e.clientX:e.touches[0].clientX)-rect.left;
+  const y = (e.clientY!==undefined?e.clientY:e.touches[0].clientY)-rect.top;
+  return {x,y};
+}
+
+function scratch(e){
+  if(!isDrawing) return;
+  const pos=getPointerPos(e);
+  ctx.globalCompositeOperation='destination-out';
+  ctx.beginPath();
+  ctx.arc(pos.x,pos.y,15,0,Math.PI*2);
+  ctx.fill();
+  checkReveal(); // check if most is scratched
+}
+
+// Auto-reveal after ~70% scratched
+function checkReveal(){
+  const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+  let transparent=0;
+  for(let i=3;i<imageData.data.length;i+=4){
+    if(imageData.data[i]===0) transparent++;
+  }
+  const percent = transparent / (canvas.width*canvas.height) *100;
+  if(percent>70){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  }
+}
+
+// Mouse events
+canvas.addEventListener('mousedown',()=>isDrawing=true);
+canvas.addEventListener('mouseup',()=>isDrawing=false);
+canvas.addEventListener('mouseout',()=>isDrawing=false);
+canvas.addEventListener('mousemove',scratch);
+
+// Touch events
+canvas.addEventListener('touchstart',(e)=>{ e.preventDefault(); isDrawing=true; scratch(e); });
+canvas.addEventListener('touchend',(e)=>{ e.preventDefault(); isDrawing=false; });
+canvas.addEventListener('touchmove',(e)=>{ e.preventDefault(); scratch(e); });
+</script>
+
+</body>
+</html>
