@@ -1,136 +1,220 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scratch Card</title>
-<style>
-body { display:flex; justify-content:center; align-items:center; height:100vh; background:#f0f0f0; font-family:sans-serif; }
-#scratchCard { position:relative; width:300px; height:150px; background:gray; overflow:hidden; border-radius:10px; box-shadow:0 4px 10px rgba(0,0,0,0.2); }
-#prize { position:absolute; top:0; left:0; width:100%; height:100%; display:flex; justify-content:center; align-items:center; font-size:24px; z-index:1; user-select:none; color:lightblue; text-align:center; padding:10px; }
-#overlay { position:absolute; top:0; left:0; width:100%; height:100%; cursor:pointer; z-index:2; touch-action:none; }
-</style>
+    <title>Scratch Ticket</title>
+    <style>
+        body {
+            background: #1e1e1e;
+            color: white;
+            text-align: center;
+            font-family: Arial;
+            margin-top: 50px;
+        }
+
+        canvas {
+            margin-top: 20px;
+            border-radius: 10px;
+            cursor: crosshair;
+        }
+
+        #result {
+            margin-top: 20px;
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        #footer {
+            margin-top: 40px;
+            font-size: 14px;
+            color: #aaa;
+        }
+    </style>
 </head>
 <body>
 
-<div id="scratchCard">
-  <div id="prize">🎉 Scratch to reveal 🎉</div>
-  <canvas id="overlay"></canvas>
+<h1>Scratch Ticket ($500)</h1>
+
+<canvas id="canvas" width="300" height="150"></canvas>
+
+<div id="result"></div>
+
+<div id="footer">
+    Provided by "Woolie's Gas Station"
 </div>
 
 <script>
-// ----- Canvas setup -----
-const canvas = document.getElementById('overlay');
-const ctx = canvas.getContext('2d');
-canvas.width = canvas.offsetWidth;
-canvas.height = canvas.offsetHeight;
-ctx.fillStyle = 'darkgray';
-ctx.fillRect(0,0,canvas.width,canvas.height);
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
-// ----- Utilities -----
-function getToken() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('token');
+
+// =======================
+// 🎟️ TICKET SYSTEM
+// =======================
+function getTicketId() {
+    let params = new URLSearchParams(window.location.search);
+    let id = params.get("ticket");
+
+    // if no ticket, generate one and update URL
+    if (!id) {
+        id = Math.random().toString(36).substring(2, 10).toUpperCase();
+        window.location.search = "?ticket=" + id;
+    }
+
+    return id;
 }
 
-// Generate random token
-function generateToken(length=10){
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let token = '';
-  for(let i=0;i<length;i++){
-    token += chars.charAt(Math.floor(Math.random()*chars.length));
-  }
-  return token;
+const ticketId = getTicketId();
+
+
+// =======================
+// 🔢 DETERMINISTIC RANDOM
+// =======================
+function seededRandom(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = (hash * 31 + str.charCodeAt(i)) % 1000000;
+    }
+    return (hash % 100) / 100;
 }
 
-// Simple hash function to generate a numeric code from token
-function hashToken(token) {
-  let hash = 0;
-  for (let i=0;i<token.length;i++){
-    hash = (hash*31 + token.charCodeAt(i)) % 1000000; // 6-digit number for deterministic prize
-  }
-  return hash;
+
+// =======================
+// 💰 RESULT (BASED ON TICKET)
+// =======================
+let roll = seededRandom(ticketId) * 100;
+let winnings = 0;
+
+if (roll < 60) winnings = 0;
+else if (roll < 80) winnings = 1000;
+else if (roll < 92) winnings = 2500;
+else winnings = 5000;
+
+let resultText = winnings > 0 ? "+$" + winnings : "YOU LOST";
+
+
+// =======================
+// 🔊 SOUNDS
+// =======================
+function playWinSound() {
+    new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg").play();
 }
 
-// Weighted prizes
-const prizes = [
-  { text:"Nothing", chance:4 },
-  { text:"$500,00", chance:3 },
-  { text:"$1.000,00", chance:2 },
-  { text:"$2.500,00", chance:1 }
-];
-
-// Pick deterministic prize
-function pickPrize(token){
-  const code = hashToken(token);
-  const totalChance = prizes.reduce((sum,p)=>sum+p.chance,0);
-  let cumulative=0;
-  for(let p of prizes){
-    cumulative+=p.chance;
-    if(code%totalChance < cumulative) return p.text;
-  }
+function playLoseSound() {
+    new Audio("https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg").play();
 }
 
-// ----- Token verification & one-time use -----
-let token = getToken();
-const prizeDiv = document.getElementById('prize');
-if(!token){
-  // Generate a new token if none provided and reload URL
-  token = generateToken(10);
-  window.location.href = window.location.pathname + "?token=" + token;
-}else{
-  // Check if already played in this browser
-  if(localStorage.getItem("played_"+token)){
-    prizeDiv.textContent = "Already played! ❌";
-  }else{
-    localStorage.setItem("played_"+token,"1");
-    const prize = pickPrize(token);
-    prizeDiv.textContent = prize;
-  }
+
+// =======================
+// 🎨 DRAW PRIZE
+// =======================
+function drawPrize() {
+    ctx.globalCompositeOperation = "source-over";
+
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = winnings > 0 ? "lime" : "red";
+    ctx.font = "bold 40px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(resultText, canvas.width / 2, canvas.height / 2 + 10);
 }
 
-// ----- Scratch functionality -----
-let isDrawing=false;
-function getPointerPos(e){
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.clientX!==undefined?e.clientX:e.touches[0].clientX)-rect.left;
-  const y = (e.clientY!==undefined?e.clientY:e.touches[0].clientY)-rect.top;
-  return {x,y};
+
+// =======================
+// 🪙 DRAW COVER
+// =======================
+function drawCover() {
+    ctx.globalCompositeOperation = "source-over";
+
+    ctx.fillStyle = "gray";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "white";
+    ctx.font = "20px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("Scratch Here", canvas.width / 2, canvas.height / 2);
 }
 
-function scratch(e){
-  if(!isDrawing) return;
-  const pos=getPointerPos(e);
-  ctx.globalCompositeOperation='destination-out';
-  ctx.beginPath();
-  ctx.arc(pos.x,pos.y,15,0,Math.PI*2);
-  ctx.fill();
-  checkReveal(); // check if most is scratched
+drawPrize();
+drawCover();
+
+
+// =======================
+// ✏️ SCRATCH SYSTEM
+// =======================
+let isDrawing = false;
+let scratched = 0;
+let total = 0;
+let revealed = false;
+
+const gridSize = 10;
+const grid = [];
+
+for (let x = 0; x < canvas.width; x += gridSize) {
+    for (let y = 0; y < canvas.height; y += gridSize) {
+        grid.push({x, y, scratched: false});
+        total++;
+    }
 }
 
-// Auto-reveal after ~70% scratched
-function checkReveal(){
-  const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
-  let transparent=0;
-  for(let i=3;i<imageData.data.length;i+=4){
-    if(imageData.data[i]===0) transparent++;
-  }
-  const percent = transparent / (canvas.width*canvas.height) *100;
-  if(percent>70){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-  }
+canvas.addEventListener("mousedown", () => isDrawing = true);
+canvas.addEventListener("mouseup", () => isDrawing = false);
+canvas.addEventListener("mouseleave", () => isDrawing = false);
+
+canvas.addEventListener("mousemove", (e) => {
+    if (!isDrawing || revealed) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.beginPath();
+    ctx.arc(x, y, 25, 0, Math.PI * 2);
+    ctx.fill();
+
+    grid.forEach(cell => {
+        if (!cell.scratched) {
+            const dx = cell.x - x;
+            const dy = cell.y - y;
+            if (dx * dx + dy * dy < 25 * 25) {
+                cell.scratched = true;
+                scratched++;
+            }
+        }
+    });
+
+    checkReveal();
+});
+
+
+// =======================
+// 🎯 REVEAL LOGIC
+// =======================
+function checkReveal() {
+    if (revealed) return;
+
+    if (scratched / total > 0.5) {
+        revealed = true;
+
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        drawPrize();
+
+        const resultDiv = document.getElementById("result");
+
+        if (winnings > 0) {
+            resultDiv.innerText = `Ticket ${ticketId}: You won $${winnings}!`;
+            playWinSound();
+        } else {
+            resultDiv.innerText = `Ticket ${ticketId}: You lost`;
+            playLoseSound();
+        }
+
+        isDrawing = false;
+    }
 }
-
-// Mouse events
-canvas.addEventListener('mousedown',()=>isDrawing=true);
-canvas.addEventListener('mouseup',()=>isDrawing=false);
-canvas.addEventListener('mouseout',()=>isDrawing=false);
-canvas.addEventListener('mousemove',scratch);
-
-// Touch events
-canvas.addEventListener('touchstart',(e)=>{ e.preventDefault(); isDrawing=true; scratch(e); });
-canvas.addEventListener('touchend',(e)=>{ e.preventDefault(); isDrawing=false; });
-canvas.addEventListener('touchmove',(e)=>{ e.preventDefault(); scratch(e); });
 </script>
 
 </body>
